@@ -27,6 +27,77 @@ Rails.application.config.generators do |g|
 end
 RUBY
 
+module Gemfile
+	class GemInfo
+		def initialize(name) @name=name; @group=[]; @opts={}; end
+		attr_accessor :name, :version
+		attr_reader :group, :opts
+		
+		def opts=(new_opts={})
+			new_group = new_opts.delete(:group)
+			if (new_group && self.group != new_group)
+				@group = ([self.group].flatten + [new_group].flatten).compact.uniq.sort
+			end
+			@opts = (self.opts || {}).merge(new_opts)
+		end
+		
+		def group_key() @group end
+		
+		def gem_args_string
+			args = ["'#{@name}'"]
+			args << "'#{@version}'" if @version
+			@opts.each do |name,value|
+				args << ":#{name}=>#{value.inspect}"
+			end
+			args.join(', ')
+		end
+	end
+
+	@geminfo = {}
+	
+	class << self
+		# add(name, version, opts={})
+		def add(name, *args)
+			name = name.to_s
+			version = args.first && !args.first.is_a?(Hash) ? args.shift : nil
+			opts = args.first && args.first.is_a?(Hash) ? args.shift : {}
+			@geminfo[name] = (@geminfo[name] || GemInfo.new(name)).tap do |info|
+				info.version = version if version
+				info.opts = opts
+			end
+		end
+		
+		def write
+			File.open('Gemfile', 'a') do |file|
+				file.puts
+				grouped_gem_names.each do |group, gem_names|
+					indent = ""
+					unless group.empty?
+						file.puts "group :#{group.join(', :')} do" unless group.empty? 
+						indent="  "
+					end
+					gem_names.each do |gem_name|
+						file.puts "#{indent}gem #{@geminfo[gem_name].gem_args_string}"
+					end
+					file.puts "end" unless group.empty?
+					file.puts
+				end
+			end
+		end
+		
+		private
+		#returns {group=>[...gem names...]}, ie {[:development, :test]=>['rspec-rails', 'mocha'], :assets=>[], ...}
+		def grouped_gem_names
+			{}.tap do |_groups|
+				@geminfo.each do |gem_name, geminfo|
+					(_groups[geminfo.group_key] ||= []).push(gem_name)
+				end
+			end
+		end
+	end
+end
+def add_gem(*all) Gemfile.add(*all); end
+
 @recipes = ["core", "git", "railsapps", "setup", "readme", "gems", "testing", "email", "models", "controllers", "views", "routes", "frontend", "init", "prelaunch", "saas", "extras"]
 @prefs = {}
 @gems = []
@@ -684,133 +755,133 @@ insert_into_file('Gemfile', "ruby '#{RUBY_VERSION}'\n", :before => /^ *gem 'rail
 
 ## Web Server
 if (prefs[:dev_webserver] == prefs[:prod_webserver])
-  gem 'thin', '>= 1.5.0' if prefer :dev_webserver, 'thin'
-  gem 'unicorn', '>= 4.3.1' if prefer :dev_webserver, 'unicorn'
-  gem 'puma', '>= 1.6.3' if prefer :dev_webserver, 'puma'
+  add_gem 'thin', '>= 1.5.0' if prefer :dev_webserver, 'thin'
+  add_gem 'unicorn', '>= 4.3.1' if prefer :dev_webserver, 'unicorn'
+  add_gem 'puma', '>= 1.6.3' if prefer :dev_webserver, 'puma'
 else
-  gem 'thin', '>= 1.5.0', :group => [:development, :test] if prefer :dev_webserver, 'thin'
-  gem 'unicorn', '>= 4.3.1', :group => [:development, :test] if prefer :dev_webserver, 'unicorn'
-  gem 'puma', '>= 1.6.3', :group => [:development, :test] if prefer :dev_webserver, 'puma'
-  gem 'thin', '>= 1.5.0', :group => :production if prefer :prod_webserver, 'thin'
-  gem 'unicorn', '>= 4.3.1', :group => :production if prefer :prod_webserver, 'unicorn'
-  gem 'puma', '>= 1.6.3', :group => :production if prefer :prod_webserver, 'puma'
+  add_gem 'thin', '>= 1.5.0', :group => [:development, :test] if prefer :dev_webserver, 'thin'
+  add_gem 'unicorn', '>= 4.3.1', :group => [:development, :test] if prefer :dev_webserver, 'unicorn'
+  add_gem 'puma', '>= 1.6.3', :group => [:development, :test] if prefer :dev_webserver, 'puma'
+  add_gem 'thin', '>= 1.5.0', :group => :production if prefer :prod_webserver, 'thin'
+  add_gem 'unicorn', '>= 4.3.1', :group => :production if prefer :prod_webserver, 'unicorn'
+  add_gem 'puma', '>= 1.6.3', :group => :production if prefer :prod_webserver, 'puma'
 end
 
 ## Database Adapter
 gsub_file 'Gemfile', /gem 'sqlite3'\n/, '' unless prefer :database, 'sqlite'
-gem 'mongoid', '>= 3.1.2' if prefer :orm, 'mongoid'
+add_gem 'mongoid', '>= 3.1.2' if prefer :orm, 'mongoid'
 gsub_file 'Gemfile', /gem 'pg'.*/, ''
-gem 'pg', '>= 0.15.0' if prefer :database, 'postgresql'
+add_gem 'pg', '>= 0.15.0' if prefer :database, 'postgresql'
 gsub_file 'Gemfile', /gem 'mysql2'.*/, ''
-gem 'mysql2', '>= 0.3.11' if prefer :database, 'mysql'
+add_gem 'mysql2', '>= 0.3.11' if prefer :database, 'mysql'
 
 ## Template Engine
 if prefer :templates, 'haml'
-  gem 'haml-rails', '>= 0.4'
-  gem 'html2haml', '>= 1.0.1', :group => :development
+  add_gem 'haml-rails', '>= 0.4'
+  add_gem 'html2haml', '>= 1.0.1', :group => :development
 end
 if prefer :templates, 'slim'
-  gem 'slim', '>= 2.0.0.pre.6'
-  gem 'haml2slim', '>= 0.4.6', :group => :development
+  add_gem 'slim', '>= 2.0.0.pre.6'
+  add_gem 'haml2slim', '>= 0.4.6', :group => :development
   # Haml is needed for conversion of HTML to Slim
-  gem 'haml-rails', '>= 0.4', :group => :development
-  gem 'html2haml', '>= 1.0.1', :group => :development
+  add_gem 'haml-rails', '>= 0.4', :group => :development
+  add_gem 'html2haml', '>= 1.0.1', :group => :development
 end
 
 ## Testing Framework
 if prefer :unit_test, 'rspec'
-  gem 'rspec-rails', '>= 2.12.2', :group => [:development, :test]
-  gem 'capybara', '>= 2.0.3', :group => :test if prefer :integration, 'rspec-capybara'
-  gem 'database_cleaner', '>= 1.0.0.RC1', :group => :test
+  add_gem 'rspec-rails', '>= 2.12.2', :group => [:development, :test]
+  add_gem 'capybara', '>= 2.0.3', :group => :test if prefer :integration, 'rspec-capybara'
+  add_gem 'database_cleaner', '>= 1.0.0.RC1', :group => :test
   if prefer :orm, 'mongoid'
-    gem 'mongoid-rspec', '>= 1.7.0', :group => :test
+    add_gem 'mongoid-rspec', '>= 1.7.0', :group => :test
   end
-  gem 'email_spec', '>= 1.4.0', :group => :test
+  add_gem 'email_spec', '>= 1.4.0', :group => :test
 end
 if prefer :unit_test, 'minitest'
-  gem 'minitest-spec-rails', '>= 4.3.8', :group => :test
-  gem 'minitest-wscolor', '>= 0.0.3', :group => :test
-  gem 'capybara', '>= 2.0.3', :group => :test if prefer :integration, 'minitest-capybara'
+  add_gem 'minitest-spec-rails', '>= 4.3.8', :group => :test
+  add_gem 'minitest-wscolor', '>= 0.0.3', :group => :test
+  add_gem 'capybara', '>= 2.0.3', :group => :test if prefer :integration, 'minitest-capybara'
 end
 if prefer :integration, 'cucumber'
-  gem 'cucumber-rails', '>= 1.3.1', :group => :test, :require => false
-  gem 'database_cleaner', '>= 1.0.0.RC1', :group => :test unless prefer :unit_test, 'rspec'
-  gem 'launchy', '>= 2.2.0', :group => :test
-  gem 'capybara', '>= 2.0.3', :group => :test
+  add_gem 'cucumber-rails', '>= 1.3.1', :group => :test, :require => false
+  add_gem 'database_cleaner', '>= 1.0.0.RC1', :group => :test unless prefer :unit_test, 'rspec'
+  add_gem 'launchy', '>= 2.2.0', :group => :test
+  add_gem 'capybara', '>= 2.0.3', :group => :test
 end
-gem 'turnip', '>= 1.1.0', :group => :test if prefer :integration, 'turnip'
+add_gem 'turnip', '>= 1.1.0', :group => :test if prefer :integration, 'turnip'
 if prefer :continuous_testing, 'guard'
-  gem 'guard-bundler', '>= 1.0.0', :group => :development
-  gem 'guard-cucumber', '>= 1.4.0', :group => :development if prefer :integration, 'cucumber'
-  gem 'guard-rails', '>= 0.4.0', :group => :development
-  gem 'guard-rspec', '>= 2.5.2', :group => :development if prefer :unit_test, 'rspec'
-  gem 'rb-inotify', '>= 0.9.0', :group => :development, :require => false
-  gem 'rb-fsevent', '>= 0.9.3', :group => :development, :require => false
-  gem 'rb-fchange', '>= 0.0.6', :group => :development, :require => false
+  add_gem 'guard-bundler', '>= 1.0.0', :group => :development
+  add_gem 'guard-cucumber', '>= 1.4.0', :group => :development if prefer :integration, 'cucumber'
+  add_gem 'guard-rails', '>= 0.4.0', :group => :development
+  add_gem 'guard-rspec', '>= 2.5.2', :group => :development if prefer :unit_test, 'rspec'
+  add_gem 'rb-inotify', '>= 0.9.0', :group => :development, :require => false
+  add_gem 'rb-fsevent', '>= 0.9.3', :group => :development, :require => false
+  add_gem 'rb-fchange', '>= 0.0.6', :group => :development, :require => false
 end
-gem 'factory_girl_rails', '>= 4.2.0', :group => [:development, :test] if prefer :fixtures, 'factory_girl'
-gem 'fabrication', '>= 2.3.0', :group => [:development, :test] if prefer :fixtures, 'fabrication'
-gem 'machinist', '>= 2.0', :group => :test if prefer :fixtures, 'machinist'
+add_gem 'factory_girl_rails', '>= 4.2.0', :group => [:development, :test] if prefer :fixtures, 'factory_girl'
+add_gem 'fabrication', '>= 2.3.0', :group => [:development, :test] if prefer :fixtures, 'fabrication'
+add_gem 'machinist', '>= 2.0', :group => :test if prefer :fixtures, 'machinist'
 
 ## Front-end Framework
-gem 'bootstrap-sass', '>= 2.3.0.0' if prefer :bootstrap, 'sass'
-gem 'compass-rails', '>= 1.0.3', :group => :assets if prefer :frontend, 'foundation'
-gem 'zurb-foundation', '>= 4.0.9', :group => :assets if prefer :frontend, 'foundation'
+add_gem 'bootstrap-sass', '>= 2.3.0.0' if prefer :bootstrap, 'sass'
+add_gem 'compass-rails', '>= 1.0.3', :group => :assets if prefer :frontend, 'foundation'
+add_gem 'zurb-foundation', '>= 4.0.9', :group => :assets if prefer :frontend, 'foundation'
 if prefer :bootstrap, 'less'
-  gem 'less-rails', '>= 2.2.6', :group => :assets
-  gem 'twitter-bootstrap-rails', '>= 2.2.4', :group => :assets
+  add_gem 'less-rails', '>= 2.2.6', :group => :assets
+  add_gem 'twitter-bootstrap-rails', '>= 2.2.4', :group => :assets
   # install gem 'therubyracer' to use Less
-  gem 'libv8', '>= 3.11.8'
-  gem 'therubyracer', '>= 0.11.3', :group => :assets, :platform => :ruby, :require => 'v8'
+  add_gem 'libv8', '>= 3.11.8'
+  add_gem 'therubyracer', '>= 0.11.3', :group => :assets, :platform => :ruby, :require => 'v8'
 end
 
 ## Email
-gem 'sendgrid', '>= 1.0.1' if prefer :email, 'sendgrid'
+add_gem 'sendgrid', '>= 1.0.1' if prefer :email, 'sendgrid'
 
 ## Authentication (Devise)
-gem 'devise', '>= 2.2.3' if prefer :authentication, 'devise'
-gem 'devise_invitable', '>= 1.1.5' if prefer :devise_modules, 'invitable'
+add_gem 'devise', '>= 2.2.3' if prefer :authentication, 'devise'
+add_gem 'devise_invitable', '>= 1.1.5' if prefer :devise_modules, 'invitable'
 
 ## Authentication (OmniAuth)
-gem 'omniauth', '>= 1.1.3' if prefer :authentication, 'omniauth'
-gem 'omniauth-twitter' if prefer :omniauth_provider, 'twitter'
-gem 'omniauth-facebook' if prefer :omniauth_provider, 'facebook'
-gem 'omniauth-github' if prefer :omniauth_provider, 'github'
-gem 'omniauth-linkedin' if prefer :omniauth_provider, 'linkedin'
-gem 'omniauth-google-oauth2' if prefer :omniauth_provider, 'google_oauth2'
-gem 'omniauth-tumblr' if prefer :omniauth_provider, 'tumblr'
+add_gem 'omniauth', '>= 1.1.3' if prefer :authentication, 'omniauth'
+add_gem 'omniauth-twitter' if prefer :omniauth_provider, 'twitter'
+add_gem 'omniauth-facebook' if prefer :omniauth_provider, 'facebook'
+add_gem 'omniauth-github' if prefer :omniauth_provider, 'github'
+add_gem 'omniauth-linkedin' if prefer :omniauth_provider, 'linkedin'
+add_gem 'omniauth-google-oauth2' if prefer :omniauth_provider, 'google_oauth2'
+add_gem 'omniauth-tumblr' if prefer :omniauth_provider, 'tumblr'
 
 ## Authorization
 if prefer :authorization, 'cancan'
-  gem 'cancan', '>= 1.6.9'
-  gem 'rolify', '>= 3.2.0'
+  add_gem 'cancan', '>= 1.6.9'
+  add_gem 'rolify', '>= 3.2.0'
 end
 
 ## Form Builder
-gem 'simple_form', '>= 2.1.0' if prefer :form_builder, 'simple_form'
+add_gem 'simple_form', '>= 2.1.0' if prefer :form_builder, 'simple_form'
 
 ## Membership App
 if prefer :railsapps, 'rails-stripe-membership-saas'
-  gem 'stripe', '>= 1.7.11'
-  gem 'stripe_event', '>= 0.4.0'
+  add_gem 'stripe', '>= 1.7.11'
+  add_gem 'stripe_event', '>= 0.4.0'
 end
 if prefer :railsapps, 'rails-recurly-subscription-saas'
-  gem 'recurly', '>= 2.1.8'
-  gem 'nokogiri', '>= 1.5.5'
-  gem 'countries', '>= 0.9.2'
-  gem 'httpi', '>= 1.1.1'
-  gem 'httpclient', '>= 2.3.3'
+  add_gem 'recurly', '>= 2.1.8'
+  add_gem 'nokogiri', '>= 1.5.5'
+  add_gem 'countries', '>= 0.9.2'
+  add_gem 'httpi', '>= 1.1.1'
+  add_gem 'httpclient', '>= 2.3.3'
 end
 
 ## Signup App
 if prefer :railsapps, 'rails-prelaunch-signup'
-  gem 'gibbon', '>= 0.4.2'
-  gem 'selenium-webdriver', '~> 2.32.1'
+  add_gem 'gibbon', '>= 0.4.2'
+  add_gem 'selenium-webdriver', '~> 2.32.1'
 end
 
 ## Gems from a defaults file or added interactively
 gems.each do |g|
-  gem(*g)
+  add_gem(*g)
 end
 
 ## Git
@@ -862,6 +933,7 @@ after_bundler do
     if affirm
       run 'bundle exec rake db:drop'
     else
+    	#why this? -- the user never requested an exit
       raise "aborted at user's request"
     end
   end
@@ -2183,7 +2255,7 @@ if config['quiet_assets']
 end
 if prefs[:quiet_assets]
   say_wizard "recipe setting quiet_assets for reduced asset pipeline logging"
-  gem 'quiet_assets', '>= 1.0.2', :group => :development
+  add_gem 'quiet_assets', '>= 1.0.2', :group => :development
 end
 
 ## LOCAL_ENV.YML FILE
@@ -2192,7 +2264,7 @@ if config['local_env_file']
 end
 if prefs[:local_env_file]
   say_wizard "recipe creating application.yml file for environment variables"
-  gem 'figaro', '>= 0.6.3'
+  add_gem 'figaro', '>= 0.6.3'
 end
 
 ## BETTER ERRORS
@@ -2201,8 +2273,8 @@ if config['better_errors']
 end
 if prefs[:better_errors]
   say_wizard "recipe adding better_errors gem"
-  gem 'better_errors', '>= 0.7.2', :group => :development
-  gem 'binding_of_caller', '>= 0.7.1', :group => :development, :platforms => [:mri_19, :rbx]
+  add_gem 'better_errors', '>= 0.7.2', :group => :development
+  add_gem 'binding_of_caller', '>= 0.7.1', :group => :development, :platforms => [:mri_19, :rbx]
 end
 
 ## BAN SPIDERS
@@ -2225,8 +2297,8 @@ case RbConfig::CONFIG['host_os']
       # was it already added for bootstrap-less?
       unless prefer :bootstrap, 'less'
         say_wizard "recipe adding 'therubyracer' JavaScript runtime gem"
-        gem 'libv8', '>= 3.11.8'
-        gem 'therubyracer', '>= 0.11.3', :group => :assets, :platform => :ruby, :require => 'v8'
+        add_gem 'libv8', '>= 3.11.8'
+        add_gem 'therubyracer', '>= 0.11.3', :group => :assets, :platform => :ruby, :require => 'v8'
       end
     end
 end
@@ -2255,7 +2327,7 @@ if config['github']
   prefs[:github] = true
 end
 if prefs[:github]
-  gem 'hub', '>= 1.10.2', :require => nil, :group => [:development]
+  add_gem 'hub', '>= 1.10.2', :require => nil, :group => [:development]
   after_everything do
     say_wizard "recipe creating GitHub repository"
     git_uri = `git config remote.origin.url`.strip
@@ -2274,6 +2346,9 @@ if prefs[:github]
   end
 end
 
+# >-----------------------------[ Final Gemfile Write ]------------------------------<
+
+Gemfile.write
 
 
 # >---------------------------------[ Diagnostics ]----------------------------------<
