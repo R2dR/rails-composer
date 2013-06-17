@@ -943,7 +943,7 @@ after_bundler do
       run 'bundle exec rake db:drop'
     else
     	#why this? -- the user never requested an exit
-      #raise "aborted at user's request"
+      raise "aborted at user's request"
     end
   end
   run 'bundle exec rake db:create:all' unless prefer :orm, 'mongoid'
@@ -2321,11 +2321,11 @@ after_everything do
   }.each { |file| remove_file file }
   # remove commented lines and multiple blank lines from Gemfile
   # thanks to https://github.com/perfectline/template-bucket/blob/master/cleanup.rb
-  #gsub_file 'Gemfile', /#.*\n/, "\n"
-  #gsub_file 'Gemfile', /\n^\s*\n/, "\n"
+  gsub_file 'Gemfile', /#.*\n/, "\n"
+  gsub_file 'Gemfile', /\n^\s*\n/, "\n"
   # remove commented lines and multiple blank lines from config/routes.rb
-  #gsub_file 'config/routes.rb', /  #.*\n/, "\n"
-  #gsub_file 'config/routes.rb', /\n^\s*\n/, "\n"
+  gsub_file 'config/routes.rb', /  #.*\n/, "\n"
+  gsub_file 'config/routes.rb', /\n^\s*\n/, "\n"
   # GIT
   git :add => '-A' if prefer :git, true
   git :commit => '-qm "rails_apps_composer: extras"' if prefer :git, true
