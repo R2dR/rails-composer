@@ -33,15 +33,24 @@ module Gemfile
 		attr_accessor :name, :version
 		attr_reader :group, :opts
 		
+		@@GROUP_OVERRIDES = {
+			machinist: [:test, :development]
+		}.inject({}){|hash, item| hash[item.first.to_s]=item.last; hash}
+		
 		def opts=(new_opts={})
-			new_group = new_opts.delete(:group)
-			if (new_group && self.group != new_group)
-				@group = ([self.group].flatten + [new_group].flatten).compact.uniq.sort
-			end
+			set_group(new_opts.delete(:group))
 			@opts = (self.opts || {}).merge(new_opts)
 		end
 		
-		def group_key() @group end
+		def set_group(new_group)
+			if @@GROUP_OVERRIDES[self.name]
+				@group = @@GROUP_OVERRIDES[self.name]
+			elsif (new_group && self.group != new_group)
+				@group = ([self.group].flatten + [new_group].flatten).compact.uniq
+			end
+		end
+		
+		def group_key() @group.sort end
 		
 		def gem_args_string
 			args = ["'#{@name}'"]
@@ -934,7 +943,7 @@ after_bundler do
       run 'bundle exec rake db:drop'
     else
     	#why this? -- the user never requested an exit
-      raise "aborted at user's request"
+      #raise "aborted at user's request"
     end
   end
   run 'bundle exec rake db:create:all' unless prefer :orm, 'mongoid'
@@ -2312,11 +2321,11 @@ after_everything do
   }.each { |file| remove_file file }
   # remove commented lines and multiple blank lines from Gemfile
   # thanks to https://github.com/perfectline/template-bucket/blob/master/cleanup.rb
-  gsub_file 'Gemfile', /#.*\n/, "\n"
-  gsub_file 'Gemfile', /\n^\s*\n/, "\n"
+  #gsub_file 'Gemfile', /#.*\n/, "\n"
+  #gsub_file 'Gemfile', /\n^\s*\n/, "\n"
   # remove commented lines and multiple blank lines from config/routes.rb
-  gsub_file 'config/routes.rb', /  #.*\n/, "\n"
-  gsub_file 'config/routes.rb', /\n^\s*\n/, "\n"
+  #gsub_file 'config/routes.rb', /  #.*\n/, "\n"
+  #gsub_file 'config/routes.rb', /\n^\s*\n/, "\n"
   # GIT
   git :add => '-A' if prefer :git, true
   git :commit => '-qm "rails_apps_composer: extras"' if prefer :git, true
