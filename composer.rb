@@ -36,15 +36,15 @@ module Gemfile
     attr_accessor :name, :version
     attr_reader :group, :opts
 
-		@@GROUP_OVERRIDES = {
-			machinist: [:test, :development]
-		}.inject({}){|hash, item| hash[item.first.to_s]=item.last; hash}
-		
-		def opts=(new_opts={})
-			set_group(new_opts.delete(:group))
-			@opts = (self.opts || {}).merge(new_opts)
-		end
-    
+    @@GROUP_OVERRIDES = {
+      machinist: [:test, :development]
+    }.inject({}){|hash, item| hash[item.first.to_s]=item.last; hash}
+
+    def opts=(new_opts={})
+      set_group(new_opts.delete(:group))
+      @opts = (self.opts || {}).merge(new_opts)
+    end
+
     def set_group(new_group)
       if @@GROUP_OVERRIDES[self.name]
         @group = @@GROUP_OVERRIDES[self.name]
