@@ -30,6 +30,12 @@ Rails.application.config.generators do |g|
 end
 RUBY
 
+Hash.class_eval do
+	def stringify_keys
+		self.inject({}){|hash, item| hash[item.first.to_s]=item.last; hash }
+	end
+end
+
 module Gemfile
   class GemInfo
     def initialize(name) @name=name; @group=[]; @opts={}; end
@@ -38,7 +44,7 @@ module Gemfile
 
     @@GROUP_OVERRIDES = {
       machinist: [:test, :development]
-    }.inject({}){|hash, item| hash[item.first.to_s]=item.last; hash}
+    }.stringify_keys
 
     def opts=(new_opts={})
       set_group(new_opts.delete(:group))
@@ -71,8 +77,8 @@ module Gemfile
     # add(name, version, opts={})
     def add(name, *args)
       name = name.to_s
-      version = args.first && !args.first.is_a?(Hash) ? args.shift : nil
-      opts = args.first && args.first.is_a?(Hash) ? args.shift : {}
+      version = (args.first && !args.first.is_a?(Hash)) ? args.shift : nil
+      opts = (args.first && args.first.is_a?(Hash)) ? args.shift : {}
       @geminfo[name] = (@geminfo[name] || GemInfo.new(name)).tap do |info|
         info.version = version if version
         info.opts = opts
