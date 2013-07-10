@@ -304,8 +304,10 @@ module ::RailsComposer
 
     def git_commit(message)
       if prefers? :git
-        git :add => '-A'
-        git :commit => "-qm 'rails composer: #{message}'"
+        unless `git status`.include?('nothing to commit')
+          git :add => '-A'
+          git :commit => "-qm 'rails composer: #{message}'"
+        end
       end
     end
 
@@ -2033,8 +2035,8 @@ module ::RailsComposer
     def choose_composer
 
       choice = multiple_choice "What do you want to do?", [
-        ["Compose a new application", "new"],
-      ["Use an existing composer", "existing"]]
+        ["Configure a new composer", "new"],
+      ["Use a saved composer", "existing"]]
 
       return ComposerWizard.new if choice == 'new'
 
@@ -2069,7 +2071,7 @@ module ::RailsComposer
       make_directory
       #copy to a composer class and persist it instead of the ComposerWizard class
       Composer.new(self).tap do |c|
-        c.configured = true
+        c.saved = true
         c.identifier = name.to_sym
         File.open(file_path(name), 'w') {|f| f.write c.to_yaml }
       end
@@ -2107,17 +2109,17 @@ module ::RailsComposer
     include RailsTemplateScript
     include RailsVersionRequirements
     attr_reader :recipes
-    attr_accessor :configured, :identifier
+    attr_accessor :saved, :identifier
     alias_method :id, :identifier
 
     def initialize(composer = nil)
-      @configured = composer ? composer.configured : false
+      @saved = composer ? composer.saved : false
       @recipes= composer ? composer.recipes : {}
       @identifier = composer ? composer.identifier : nil
     end
 
-    def configured?
-      !!@configured
+    def saved?
+      !!@saved
     end
 
     def name
@@ -2253,18 +2255,14 @@ module ::RailsComposer
     end
   end
 
-
-
   class StockComposer < Composer
     def initialize(identifier, version, config)
       #todo: do we need to persist the rails version rqeuirements
       @supported_rails_version = version || default_supported_rails_version
-      @configured = true
+      @saved = true
       @identifier = identifier
     end
-
   end
-
 
   #class methods
   class << StockComposer
@@ -2394,10 +2392,10 @@ module ::RailsComposer
       })
     }
 
-    @@stock = PREFS_HASH.map do |id, hash|
-      composer = StockComposer.create(id, hash)
-      [composer.id, composer]
-    end.to_hash
+    #@@stock = PREFS_HASH.map do |id, hash|
+    #  composer = StockComposer.create(id, hash)
+    #  [composer.id, composer]
+    #end.to_hash
   end
 end #module RailsComposer
 
