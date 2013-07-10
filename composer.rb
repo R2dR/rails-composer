@@ -905,8 +905,7 @@ module Recipes
 	recipe :git do
 		def init
 			say_wizard "initialize git"
-#uncomment later
-#			copy_from 'https://raw.github.com/RailsApps/rails-composer/master/files/gitignore.txt', '.gitignore'
+			copy_from 'https://raw.github.com/RailsApps/rails-composer/master/files/gitignore.txt', '.gitignore'
 			git :init
 			git_commit('initial commit')
 		end
@@ -922,8 +921,8 @@ module Recipes
 			# RVM.gemset_use! requires rvm version 1.11.3.5 or newer
 			rvm_entry = `gem list`.split(/\n/).grep(/\brvm\b/).first
 			unless rvm_entry && (Gem::Version.create(rvm_entry.scan(/[0-9.]+/).first) > Gem::Version.create('1.11.3.4'))	 
+				run 'gem uninstall rvm' #uninstall in case gem is too old
 				say_wizard "installing rvm gem"
-				run 'gem uninstall rvm'
 				run 'gem install rvm'
 				Gem.clear_paths
 			end
@@ -2013,7 +2012,9 @@ class ComposerScript
 		say_wizard "You are using Rails version #{rails_version}"
 	end
 	def choose_composer
+		#note: return new wizard for now -- persisted composers implementation is not complete
 		return ComposerWizard.new
+		
 		choice = multiple_choice "What do you want to do?", [
 			["Compose a new application", "new"],
 			["Use an existing composer", "existing"]]
