@@ -56,6 +56,17 @@ String.class_eval do
    end
 end
 
+#colorization
+String.class_eval do
+  def yellow() colorize(33) end
+  def light_cyan() colorize('1;36') end
+  alias_method :lcyan, :light_cyan
+
+  private
+  #\e = \033 and \033[1m\033[33m = \e[1;33m
+  def colorize(color_code) "\e[#{color_code}m#{self}\e[0m" end
+end
+
 Symbol.class_eval do
   def to_name
     self.to_s.gsub(/[_-]/,' ').squeeze(' ')
@@ -200,16 +211,16 @@ end
 
 
 module WizardMethods
-  def say_custom(tag, text); say "\033[1m\033[36m" + tag.to_s.rjust(10) + "\033[0m" + "  #{text}" end
-  def say_recipe(name); say "\033[1m\033[36m" + "recipe".rjust(10) + "\033[0m" + "  Running #{name} recipe..." end
+  def say_custom(tag, text); say tag.to_s.rjust(10).lcyan + "  #{text}" end
+  def say_recipe(name); say "recipe".rjust(10).lcyan + "  Running #{name} recipe..." end
   def say_wizard(text, recipe=nil); say_custom(recipe ? recipe.to_name : 'composer', text) end
 
   def ask_wizard(question, recipe=nil)
-    ask "\033[1m\033[36m" + (recipe ? recipe.to_name : "prompt").rjust(10) + "\033[1m\033[36m" + "  #{question}\033[0m"
+    ask (recipe ? recipe.to_name : "prompt").rjust(10).lcyan + "  #{question}".lcyan
   end
 
   def yes_wizard?(question, recipe=nil)
-    answer = ask_wizard(question + " \033[33m(y/n)\033[0m", recipe)
+    answer = ask_wizard(question + " (y/n)".yellow, recipe)
     case answer
       when /^y(es)?$/i then true
       when /^no?$/i then false
