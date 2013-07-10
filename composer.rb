@@ -1054,19 +1054,19 @@ module ::RailsComposer
       end
 
       def ask_drop_and_create
-        self.drop_and_create_answer = yes_wizard? "Drop and recreate databases named #{app_name}?"
+        self.drop_and_create_answer = yes_wizard? "Drop databases named #{app_name}?"
       end
 
       def drop_and_create_database
         if drop_and_create_answer
           run 'bundle exec rake db:drop'
-          if prefers? :orm, :mongoid
-            run 'bundle exec rake db:create'
-          else
-            run 'bundle exec rake db:create:all'
-          end
         end
-      end
+        if prefers? :orm, :mongoid
+          run 'bundle exec rake db:create'
+        else
+          run 'bundle exec rake db:create:all'
+        end
+    end
 
       def change_database_username_password
         if database_username.blank?
