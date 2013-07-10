@@ -114,6 +114,7 @@ Array.class_eval do
   end
 end
 
+module ::RailsComposer
 module Gemfile
   class GemInfo
     def initialize(name) @name=name; @group=[]; @opts={}; end
@@ -425,11 +426,19 @@ module RailsTemplateScript
     composer ? composer.recipes : {}
   end
 
-  #use in scripting, ie. prefers? :database, :mongodb, :mysql
+  #usage prefers? :database, :mongodb, :mysql
+  #check if yes/no recipe configured
+  #		prefers? :git
+  #check if choice recipe configured
+  # 	prefers? :database, :mysql
+  #check if set of choice recipes configured
+  # 	prefers? :database, :mysql, :postgresql, :sqlite
+  #		ie. true if either mysql, postgres or sqlit configured
+  #check that a choice recipe is configured
+  #		prefers? :database
+  #		ie. true if any choice (but none) configured
   def prefers?(recipe_id, *ids)
-    if ids.empty?
-      #ie. prefers? :git  #=> this is a check if something was selected
-      # a yes/no recipe object will contain the same id
+    if ids.empty? #yes/no check, or ANY choice recipe configured
       !!recipes[recipe_id]
     else
       #ie. prefers? :database, :mysql #=> this is a choice recipe
@@ -440,7 +449,7 @@ module RailsTemplateScript
 
   protected
   def guard_scripting_target_unassigned
-    #note: persisted composers got no scripting target -- always set this off!
+    #note: stock composers got no scripting target -- always set this off!
     #raise "No scripting target assigned. Unable to operate as script!" unless scripting_target
     #puts "Warning: No scripting target assigned for #{id}. Unable to operate as script!" unless global_scripting_target || scripting_target
   end
@@ -690,10 +699,7 @@ module Recipes
   class << Recipe
     def choice(id, &doblock)
       _name = id.is_a?(String) ? id.capitalize : id.to_s.camelcase
-        # define class, ie class Mysql < Database; end
-        #_baseclass = self.name.sub(/^.*::/,'')
-        #self.class_eval "class #{_name} < #{_baseclass}; end"
-      #we'll now use parent_scripting to get instance access to parent recipe
+      #we'll now use scripting_target to get instance access to parent recipe
       self.class_eval "class #{_name} < Recipes::RecipeChoice; end"
       _klass = const_get(_name)
       _klass.class_eval(&doblock) if block_given?
@@ -923,7 +929,7 @@ module Recipes
   end
 
   recipe :rvmrc do
-    question { "Use a '#{app_name}' rvm gemset?" }
+    question { "Use a project-specific rvm gemset?" }
     applicable do
       host_os_linux? && which("rvm") && !rvmrc_detected?
     end
@@ -2023,23 +2029,77 @@ class ComposerScript
     say_wizard "You are using Rails version #{rails_version}"
   end
   def choose_composer
-    #note: return new wizard for now -- persisted composers implementation is not complete
-    return ComposerWizard.new
 
     choice = multiple_choice "What do you want to do?", [
       ["Compose a new application", "new"],
       ["Use an existing composer", "existing"]]
 
     return ComposerWizard.new if choice == 'new'
+    
+    persisted_composers = PersistedComposer.all_compatible
 
-    multiple_choice("Choose an application",
-      Persisted.of_version(Rails::VERSION::STRING).map{|c| [c.name.capitalize, c] })
+		if !persisted_composers.empty?
+	    multiple_choice("Choose an application",
+  	    persisted_composers.map{|c| [c.name.capitalize, c] })
+  	else
+  		say_wizard "No saved composers for Rails version #{rails_version}"
+  		say_wizard "Starting composer wizard..."
+  		ComposerWizard.new
+  	end
   end
 
   def using_minimum_supported_rails_version?
     compatible?
   end
 end
+
+module PersistedComposer
+  def composer_exists?(name)
+  	File.exists?(file_path(name))
+  end
+  def file_path(name)
+  	File.join(PersistedComposer.dir_path, "#{name}.comp.yml")
+  end
+  def make_directory
+  	Dir.mkdir(PersistedComposer.dir_path) rescue nil
+  end
+ 	def write_composer(name)
+ 		make_directory
+ 		#copy to a composer class and persist it instead of the ComposerWizard class
+ 		Composer.new(self).tap do |c|
+ 			c.configured = true
+ 			c.identifier = name.to_sym
+	 		File.open(file_path(name), 'w') {|f| f.write c.to_yaml }
+	 	end
+ 	end 	
+end
+
+require 'yaml'
+class << PersistedComposer
+	include RailsTemplateScript
+	DIR_NAME = '.rac'
+	
+	def dir_path
+		File.join Dir.home, DIR_NAME
+	end
+	
+	def load_saved_composers
+		Dir.glob(File.join(dir_path, '*.comp.yml')).map do |fpath|
+			begin
+				YAML.load_file(fpath)
+			rescue => e
+				say_wizard "Warning: Saved composer '#{File.basename(fpath)}' failed to load: #{e.message}"
+				nil
+			end
+		end.compact
+	end
+	
+	def all_compatible
+		load_saved_composers.select(&:compatible?)
+	end
+
+end
+
 
 class Composer
   include RailsTemplateScript
@@ -2048,9 +2108,10 @@ class Composer
   attr_accessor :configured, :identifier
   alias_method :id, :identifier
 
-  def initialize
-    @configured = false
-    @recipes={}
+  def initialize(composer = nil)
+    @configured = composer ? composer.configured : false
+    @recipes= composer ? composer.recipes : {}
+    @identifier = composer ? composer.identifier : nil
   end
 
   def configured?
@@ -2111,6 +2172,8 @@ class Composer
 end
 
 class ComposerWizard < Composer
+	include PersistedComposer
+	
   INITIAL_PRIORITY=[
     :setup,
     :git,
@@ -2120,7 +2183,7 @@ class ComposerWizard < Composer
 
   def initialize
     super
-    load_recipe_candidate_classes
+    #load_recipe_candidate_classes
   end
 
   #returns self for chaining
@@ -2133,29 +2196,48 @@ class ComposerWizard < Composer
         recipe = candidate.create_by_user_input
         if recipe
           @recipes[candidate.id] = recipe
-          recipe.inclusions.each do |inc|
-            inc.valid!
-            if @recipes[inc.id].nil?
-              @recipes[inc.id] = inc.create
-            else
-              if !inc.match?(@recipes[inc.id])
-                say_wizard "Inclusion mismatch: '#{candidate.id}' includes '#{inc.id}' but a non-matching recipe has already been created"
-                ask_wizard "Ok?"
-              end
-            end
-          end
+          configure_recipe_inclusions(recipe)
         end
       end
     end
-    #configured = true
+    ask_to_save    
     self
   end
-
+  
+	protected
+  def ask_to_save
+  	return unless yes_wizard? "Save this composer?"
+  	loop do
+	  	cname = ask_wizard "Save as what name (or blank to not save):"
+  		break if cname.blank?
+  		cname = cname.strip.gsub(/[-]/,' ').squeeze(' ').gsub(/[ -]/, '_').downcase
+	  	if (composer_exists?(cname) ? yes_wizard?("#{cname} exists. Overwrite?") : true )
+	  		#self.identifier = cname.to_sym
+		  	write_composer(cname)
+		  	break
+		  end		  			
+  	end	  	
+  end	  
+  
   private
   def load_recipe_candidate_classes
     recipe_classes = impose_initial_order(Recipes.all_compatible_base_recipes)
     RecipeDependencySort.new(recipe_classes).sort
   end
+  
+	def configure_recipe_inclusions(recipe) 
+    recipe.inclusions.each do |inc|
+      inc.valid!
+      if @recipes[inc.id].nil?
+        @recipes[inc.id] = inc.create
+      else
+        if !inc.match?(@recipes[inc.id])
+          say_wizard "Recipe conflict: '#{candidate.id}' includes '#{inc.id}' but a non-matching recipe is already configured"
+          ask_wizard "Ok?"
+        end
+      end
+    end	
+	end 
 
   def impose_initial_order(recipes)
     ordered_recipes = []
@@ -2169,7 +2251,9 @@ class ComposerWizard < Composer
   end
 end
 
-class Persisted < Composer
+
+
+class StockComposer < Composer
   def initialize(identifier, version, config)
   #todo: do we need to persist the rails version rqeuirements
     @supported_rails_version = version || default_supported_rails_version
@@ -2177,30 +2261,28 @@ class Persisted < Composer
     @identifier = identifier
   end
 
-  def loadrecipe_list(config)
-    #todo: possibly a waste of time if marshalling is the way to go
-  end
 end
 
+
 #class methods
-class << Persisted
+class << StockComposer
   def of_version(version)
-    @@persisted.values.select{|c| c.compatible?(version) }
+    @@stock.values.select{|c| c.compatible?(version) }
   end
   def find(identifier)
-    @@persisted.find{|id| id == identifier }.last
+    @@stock.find{|id| id == identifier }.last
   end
   def create(id, params)
-    raise 'Persisted composer contains no identifier' if id.nil? || id.empty?
-    Persisted.new(id,
+    raise 'StockComposer composer contains no identifier' if id.nil? || id.empty?
+    StockComposer.new(id,
       params.delete(:version),
       params)
   end
 end
 
-#persisted composer definitions
+#stock composer definitions
 #todo: remove this to yaml on the file system
-class << Persisted
+class << StockComposer
   COMMON_RAILS3_PREFS = {
     version: "~> 3.1",
     git: true,
@@ -2310,13 +2392,14 @@ class << Persisted
     })
   }
 
-  @@persisted = PREFS_HASH.map do |id, hash|
-    composer = Persisted.create(id, hash)
+  @@stock = PREFS_HASH.map do |id, hash|
+    composer = StockComposer.create(id, hash)
     [composer.id, composer]
   end.to_hash
 end
+end #module RailsComposer
 
-ComposerScript.new(self).start
+RailsComposer::ComposerScript.new(self).start
 
 puts "FINISHED"
 exit
