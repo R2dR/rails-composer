@@ -1944,7 +1944,7 @@ module Recipes
 	
 	recipe :jsruntime do
 		question "Add 'therubyracer' javascript runtime (for Linux users without node.js)?"
-		applicable { host_os_linux? }
+		applicable { !host_os_windows? }
 		
 		def before_bundler
 			say_wizard "recipe adding 'therubyracer' JavaScript runtime gem"
