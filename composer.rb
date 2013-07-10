@@ -937,7 +937,7 @@ module Recipes
         run 'gem install rvm'
         Gem.clear_paths
       end
-      say_wizard "creating project-specifi rvm gemset and .rvmrc"
+      say_wizard "creating '#{app_name}' rvm gemset and .rvmrc"
       # using the rvm Ruby API, see:
       # http://blog.thefrontiergroup.com.au/2010/12/a-brief-introduction-to-the-rvm-ruby-api/
       # https://rvm.io/integration/passenger
